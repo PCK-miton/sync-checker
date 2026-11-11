@@ -162,6 +162,18 @@
         }
         .preview-container video { width: 100%; height: 100%; object-fit: cover; }
         .preview-status { z-index: 1; text-shadow: 0 0 4px #000; }
+        .help-btn { background-color: transparent; color: var(--text-secondary); }
+        .sheet { position: fixed; inset: 0; z-index: 10; background: rgba(2, 6, 23, 0.8); display: flex; align-items: flex-end; justify-content: center; }
+        .sheet[hidden] { display: none; }
+        .sheet-body { background: var(--card-bg); width: 100%; max-width: 500px; max-height: 88vh; max-height: 88dvh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+            border-radius: 16px 16px 0 0; border: 1px solid var(--border-color); box-sizing: border-box;
+            padding: 20px 20px calc(20px + env(safe-area-inset-bottom)); }
+        .sheet-body h2 { font-size: 1.1rem; margin: 0 0 12px; }
+        .sheet-body h3 { font-size: 0.95rem; margin: 20px 0 8px; color: var(--accent-color); }
+        .sheet-body ol, .sheet-body ul { margin: 0; padding-left: 1.3em; font-size: 0.9rem; line-height: 1.6; color: var(--text-color); }
+        .sheet-body li { margin-bottom: 4px; }
+        .sheet-body .note { font-size: 0.8rem; color: var(--text-secondary); margin: 8px 0 0; line-height: 1.5; }
+        .sheet-body button { margin-top: 20px; }
         button.primary {
             background-color: var(--accent-color);
             color: #0f172a;
@@ -230,6 +242,50 @@
         <!-- スタートボタン -->
         <button class="primary" id="startBtn" type="button">測定開始</button>
         <button id="saveBtn" type="button" hidden>生値を補正値として保存</button>
+        <button id="helpBtn" class="help-btn" type="button">使い方・注意点</button>
+    </div>
+
+    <!-- 使い方シート -->
+    <div class="sheet" id="help" hidden>
+        <div class="sheet-body" role="dialog" aria-label="使い方・注意点">
+            <h2>使い方・注意点</h2>
+
+            <h3>はじめに（初回のみ）</h3>
+            <ol>
+                <li>iPhoneの <b>Safari</b> でこのページを開きます。</li>
+                <li>共有ボタン →「<b>ホーム画面に追加</b>」で、アプリのように使えます。</li>
+                <li>「測定開始」を押すと、<b>カメラとマイクの許可</b>を求められます。両方「許可」にしてください。</li>
+            </ol>
+            <p class="note">許可を拒否した場合は、設定アプリでSafariのカメラ・マイクの許可を確認してください。</p>
+
+            <h3>測り方</h3>
+            <ol>
+                <li>「フレーム換算」と「使用端末」を選びます。</li>
+                <li>「測定開始」を押します。</li>
+                <li>カメラを<b>画面全体</b>に向け、iPhoneを<b>毎回同じ位置・同じ向き</b>に置きます。指やケースでマイクの穴をふさがないでください。</li>
+                <li>測定ファイル（黒の画面に1フレームのフラッシュ＋1kHzのビープ）を再生します。</li>
+                <li>60回で自動停止します。途中で止めるときは「測定停止」を押します。</li>
+            </ol>
+
+            <h3>結果の見方</h3>
+            <ul>
+                <li>「音声が ○ms / ○F 早い・遅い」は、<b>映像に対する音声</b>のズレです。</li>
+                <li>ばらつき（σ）が大きいときは、測り直してください。</li>
+                <li>使用端末の補正値を、測定値から引いて表示しています。</li>
+            </ul>
+
+            <h3>注意点</h3>
+            <ul>
+                <li>測定中は、<b>距離・画面の明るさ・音量</b>を変えないでください。</li>
+                <li>補正値は、基準の再生系で測った値です。<b>同じ条件</b>で使ってください。</li>
+                <li>ホーム画面アプリとSafariでは、保存した校正値が別になります。</li>
+                <li>Bluetoothイヤホンは外してください。通話や他のカメラ・マイクアプリは閉じてください。</li>
+                <li>測定中は画面をロックしないでください。周囲の雑音が大きいと音を拾えません。</li>
+                <li>映像が検出されないときは、カメラを画面全体に向け、距離を近づけてください。</li>
+            </ul>
+
+            <button id="helpClose" type="button">閉じる</button>
+        </div>
     </div>
 
     <script>
@@ -380,6 +436,11 @@ saveBtn.addEventListener('click', () => {
   addCal(c); sel.value = String(c.offsetMs); show();
   saveBtn.hidden = true; resDesc.innerHTML += '<br>校正値として保存しました';
 });
+// 使い方シート
+const help = $('help');
+$('helpBtn').addEventListener('click', () => { help.hidden = false; });
+$('helpClose').addEventListener('click', () => { help.hidden = true; });
+help.addEventListener('click', e => { if (e.target === help) help.hidden = true; });
 })();
     </script>
 </body>
