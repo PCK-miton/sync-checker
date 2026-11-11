@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Sync Checker</title>
+
+    <!-- ホーム画面アプリ設定（iOS） -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Sync Checker">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="color-scheme" content="dark">
+
+    <!-- アイコン（逆文字S + v0.1）：index.html と同じ場所に置く -->
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent-color: #38bdf8;
+            --text-color: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border-color: #334155;
+        }
+        * { -webkit-tap-highlight-color: transparent; }
+        html { -webkit-text-size-adjust: 100%; background-color: var(--bg-color); }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            /* iPhoneのノッチ・ホームバーを避ける */
+            padding: calc(20px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+                     calc(20px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            min-height: 100dvh;
+            box-sizing: border-box;
+        }
+        .container {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .header-card, .config-card, .preview-card, .result-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            box-sizing: border-box;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 {
+            font-size: 1.25rem;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        h1 svg { width: 24px; height: 30px; flex: none; }
+        .badge {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+        }
+        label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        select, button {
+            width: 100%;
+            padding: 12px;
+            /* 16px未満だとiOSがフォーカス時に画面を拡大してしまう */
+            font-size: 16px;
+            font-family: inherit;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            box-sizing: border-box;
+            touch-action: manipulation;
+        }
+        select {
+            -webkit-appearance: none;
+            appearance: none;
+            padding-right: 32px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M2 4l4 4 4-4z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 12px;
+            cursor: pointer;
+            text-overflow: ellipsis;
+        }
+        select:focus-visible, button:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+        .preview-container {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background-color: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            border: 1px solid var(--border-color);
+        }
+        .preview-status {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            font-size: 0.85rem;
+            color: #22c55e;
+            font-weight: 500;
+        }
+        .result-card {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .result-title {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            letter-spacing: 0.05em;
+        }
+        .result-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+        .result-desc {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+        .preview-container video { width: 100%; height: 100%; object-fit: cover; }
+        .preview-status { z-index: 1; text-shadow: 0 0 4px #000; }
+        button.primary {
+            background-color: var(--accent-color);
+            color: #0f172a;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        button.primary:active {
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- ヘッダー -->
+        <div class="header-card">
+            <div class="header">
+                <h1>
+                    <svg viewBox="20 12 60 76" aria-hidden="true">
+                        <path d="M33 34 C33 14 67 14 67 34 C67 56 33 44 33 66 C33 86 67 86 67 66" stroke="#38bdf8" stroke-width="11" fill="none" stroke-linecap="butt" stroke-linejoin="miter"/>
+                    </svg>
+                    Sync Checker
+                </h1>
+                <span class="badge">Ver0.1</span>
+            </div>
+        </div>
+
+        <!-- 設定エリア -->
+        <div class="config-card">
+            <div class="grid-2">
+                <div class="control-group">
+                    <label for="fpsSelect">フレーム換算 (fps)</label>
+                    <select id="fpsSelect">
+                        <option value="23.976" selected>23.98 fps</option>
+                        <option value="29.97">29.97 fps</option>
+                        <option value="24">24.00 fps</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="deviceSelect">使用端末 (遅延補正)</label>
+                    <select id="deviceSelect">
+                        <option value="0">補正なし (0ms)</option>
+                        <option value="80" selected>iPhone 15 Pro (実測: 80ms)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- プレビュー画面 -->
+        <div class="preview-card">
+            <div class="preview-container">
+                <video id="cam" playsinline muted autoplay></video>
+                <div class="preview-status" id="status">待機中</div>
+            </div>
+        </div>
+
+        <!-- 測定結果表示 -->
+        <div class="result-card">
+            <div class="result-title">MEASUREMENT RESULT</div>
+            <div class="result-value">測定を待機しています</div>
+            <div class="result-desc">「測定開始」を押し、カメラを画面全体に向けて<br>測定ファイルを再生してください</div>
+        </div>
+
+        <!-- スタートボタン -->
+        <button class="primary" id="startBtn" type="button">測定開始</button>
+        <button id="saveBtn" type="button" hidden>生値を補正値として保存</button>
+    </div>
+
+    <script>
+(() => {
+const $ = id => document.getElementById(id);
+const startBtn = $('startBtn'), saveBtn = $('saveBtn'), video = $('cam'), statusEl = $('status'),
+      sel = $('deviceSelect'), resVal = document.querySelector('.result-value'), resDesc = document.querySelector('.result-desc');
+const CAL_KEY = 'syncChecker.cal';
+
+// 音声側：1kHzをGoertzelで検出（AudioWorklet）。ctx時刻と一緒に128サンプルごとに送る
+const WORKLET = `class P extends AudioWorkletProcessor{
+ constructor(){super();this.c=2*Math.cos(2*Math.PI*1000/sampleRate);}
+ process(i){const x=i[0][0];if(!x)return true;let a=0,b=0;
+  for(let n=0;n<x.length;n++){const s=x[n]+this.c*a-b;b=a;a=s;}
+  const p=a*a+b*b-this.c*a*b;
+  this.port.postMessage([currentTime,2*Math.sqrt(Math.max(p,0))/x.length]);return true;}}
+ registerProcessor('det',P);`;
+
+function addCal(c) {
+  let o = $('calOpt');
+  if (!o) { o = document.createElement('option'); o.id = 'calOpt'; sel.appendChild(o); }
+  o.value = String(c.offsetMs);
+  o.textContent = `保存した校正値 (${c.offsetMs.toFixed(1)}ms)`;
+}
+try { const c = JSON.parse(localStorage.getItem(CAL_KEY) || 'null'); if (c) addCal(c); } catch (e) {}
+
+// 立ち上がり検出：ベースライン＋しきい値を超えたら記録開始、戻ったらイベント確定
+function detector(minThr, k, maxDur, onEvent) {
+  let base = null, sig = 0, ev = null, prev = null, lock = 0;
+  return (t, v) => {
+    if (base === null) { base = v; prev = { t, v }; return; }
+    if (t < lock) { prev = { t, v }; return; }
+    const thr = Math.max(minThr, k * sig);
+    if (!ev) {
+      if (v > base + thr) ev = { pts: [prev, { t, v }], base, thr };
+      else { base += (v - base) * 0.05; sig += (Math.abs(v - base) - sig) * 0.05; }
+    } else {
+      ev.pts.push({ t, v });
+      if (v < ev.base + ev.thr * 0.5 || t - ev.pts[0].t > maxDur) { lock = t + 300; onEvent(ev); ev = null; }
+    }
+    prev = { t, v };
+  };
+}
+// 映像：明るさの重心時刻（フレーム間隔より細かく推定）
+const vEst = ev => { let s = 0, st = 0; for (const p of ev.pts) { const w = Math.max(0, p.v - ev.base); s += w; st += w * p.t; } return st / s; };
+// 音：ピークの50%を横切る時刻（線形補間）
+const aEst = ev => {
+  const pk = Math.max(...ev.pts.map(p => p.v)), lv = ev.base + (pk - ev.base) / 2;
+  for (let i = 1; i < ev.pts.length; i++) {
+    const a = ev.pts[i - 1], b = ev.pts[i];
+    if (b.v >= lv && a.v < lv) return a.t + (lv - a.v) / (b.v - a.v) * (b.t - a.t);
+  }
+  return ev.pts[0].t;
+};
+
+let running = false, stream, ctx, wake, raw = [], vq = [], aq = [], nv = 0, na = 0, src = '-';
+const med = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+
+// 映像と音を組にして「音の時刻 − 映像の時刻」を記録（正＝音が遅れて検出）
+function push(kind, t) {
+  kind === 'v' ? nv++ : na++;
+  const own = kind === 'v' ? vq : aq, other = kind === 'v' ? aq : vq;
+  const i = other.findIndex(x => Math.abs(x - t) < 400);
+  if (i >= 0) { const o = other.splice(i, 1)[0]; raw.push(kind === 'v' ? o - t : t - o); show(); }
+  else own.push(t);
+  const cut = t - 2000; vq = vq.filter(x => x > cut); aq = aq.filter(x => x > cut);
+  if (raw.length >= 60) stop();
+}
+function stats() {
+  const m = med(raw), mad = med(raw.map(x => Math.abs(x - m))), lim = Math.max(25, 4 * 1.4826 * mad);
+  const use = raw.filter(x => Math.abs(x - m) <= lim), mu = use.reduce((a, b) => a + b, 0) / use.length;
+  const sd = Math.sqrt(use.reduce((a, b) => a + (b - mu) ** 2, 0) / Math.max(1, use.length - 1));
+  return { m: med(use), sd, n: use.length, all: raw.length };
+}
+function show() {
+  if (!raw.length) return;
+  const s = stats(), off = Number(sel.value), c = s.m - off, fps = Number($('fpsSelect').value), fr = c * fps / 1000;
+  resVal.textContent = Math.abs(c) < 0.05 ? 'ズレなし 0.0ms / 0.0F' : `音声が ${Math.abs(c).toFixed(1)}ms / ${Math.abs(fr).toFixed(1)}F ${c > 0 ? '遅い' : '早い'}`;
+  resDesc.innerHTML = `換算 ${$('fpsSelect').selectedOptions[0].textContent}<br>採用 ${s.n}/${s.all}回 ／ ばらつき σ=${s.sd.toFixed(1)}ms ／ 生値 ${s.m.toFixed(1)}ms − 補正 ${off.toFixed(1)}ms`;
+  saveBtn.hidden = s.n < 10;
+}
+sel.addEventListener('change', show);
+$('fpsSelect').addEventListener('change', show);
+
+async function start() {
+  raw = []; vq = []; aq = []; nv = na = 0; saveBtn.hidden = true;
+  resVal.textContent = '測定中…'; resDesc.innerHTML = 'カメラを画面全体に向けて<br>測定ファイルを再生してください';
+  ctx = new (window.AudioContext || window.webkitAudioContext)(); ctx.resume(); // タップ内で作る（iOS対策）
+  running = true; startBtn.textContent = '測定停止';
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 60 } },
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+    try { wake = await navigator.wakeLock.request('screen'); } catch (e) {}
+    video.srcObject = new MediaStream(stream.getVideoTracks()); await video.play();
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' })));
+    const node = new AudioWorkletNode(ctx, 'det'), mute = ctx.createGain(); mute.gain.value = 0;
+    ctx.createMediaStreamSource(stream).connect(node); node.connect(mute); mute.connect(ctx.destination);
+
+    // 音：ctx時間→performance時間は「最小遅延」追従で変換（ジッタとドリフトを抑える）
+    let off = Infinity, last = 0;
+    const aDet = detector(0.003, 8, 300, ev => push('a', aEst(ev)));
+    node.port.onmessage = e => {
+      const [ct, mag] = e.data, now = performance.now(), d = now - ct * 1000;
+      if (off === Infinity) off = d; else off += (now - last) * 1e-4;
+      last = now; off = Math.min(off, d);
+      aDet(ct * 1000 + off, mag);
+    };
+
+    // 映像：フレームごとの平均輝度
+    const cv = document.createElement('canvas'); cv.width = 32; cv.height = 18;
+    const g = cv.getContext('2d', { willReadFrequently: true });
+    const vDet = detector(4, 8, 300, ev => push('v', vEst(ev)));
+    const next = () => video.requestVideoFrameCallback ? video.requestVideoFrameCallback(onFrame) : requestAnimationFrame(n => onFrame(n, null));
+    const onFrame = (now, md) => {
+      if (!running) return;
+      g.drawImage(video, 0, 0, 32, 18);
+      const px = g.getImageData(0, 0, 32, 18).data; let s = 0;
+      for (let i = 0; i < px.length; i += 4) s += 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+      src = md && md.captureTime ? 'captureTime' : md && md.presentationTime ? 'presentationTime' : 'now';
+      vDet((md && (md.captureTime || md.presentationTime)) || now, s / 576);
+      next();
+    };
+    next();
+    const tick = setInterval(() => {
+      if (!running) return clearInterval(tick);
+      const st = stream.getVideoTracks()[0].getSettings();
+      statusEl.textContent = `映像${nv} 音${na} 組${raw.length} ｜ ${Math.round(st.frameRate || 0)}fps ${src}`;
+    }, 500);
+  } catch (e) {
+    stop(); resVal.textContent = '開始できません';
+    resDesc.textContent = 'カメラ・マイクの許可を確認してください（' + (e.name || e) + '）';
+  }
+}
+function stop() {
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (ctx) ctx.close();
+  if (wake) wake.release().catch(() => {});
+  video.srcObject = null; startBtn.textContent = '測定開始'; statusEl.textContent = '停止';
+  show();
+}
+startBtn.addEventListener('click', () => running ? stop() : start());
+saveBtn.addEventListener('click', () => {
+  const s = stats(), c = { offsetMs: Math.round(s.m * 10) / 10, sd: s.sd, n: s.n, date: new Date().toISOString() };
+  try { localStorage.setItem(CAL_KEY, JSON.stringify(c)); } catch (e) {}
+  addCal(c); sel.value = String(c.offsetMs); show();
+  saveBtn.hidden = true; resDesc.innerHTML += '<br>校正値として保存しました';
+});
+})();
+    </script>
+</body>
+</html>
