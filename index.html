@@ -241,20 +241,13 @@
                     <label for="deviceSelect">使用端末 (遅延補正)</label>
                     <select id="deviceSelect">
                         <option value="0">補正なし (0ms)</option>
-                        <option value="80" selected>iPhone 15 Pro (実測: 80ms)</option>
+                        <option value="-26" selected>iPhone 15 (実測: −26ms)</option>
+                        <option value="80">iPhone 15 Pro (旧値: 80ms・要再測定)</option>
                     </select>
                 </div>
             </div>
         </div>
 
-        <!-- 機材の元の設定（戻し忘れ防止） -->
-        <details class="config-card pend-card">
-            <summary>機材の元の設定を記録（戻し忘れ防止）</summary>
-            <p class="pend-note">共用機材のオフセットを変更する前に、元の値を記録します。「元に戻した」を押すまで、画面上部に警告が出ます。</p>
-            <div class="control-group"><label for="pendName">機材名</label><input id="pendName" type="text" placeholder="例: Studio A モニター" autocomplete="off"></div>
-            <div class="control-group"><label for="pendOrig">元の設定値</label><input id="pendOrig" type="text" placeholder="例: 0ms / 2F" autocomplete="off"></div>
-            <button id="pendAdd" type="button">記録する</button>
-        </details>
 
         <!-- プレビュー画面 -->
         <div class="preview-card">
@@ -273,8 +266,17 @@
 
         <!-- スタートボタン -->
         <button class="primary" id="startBtn" type="button">測定開始</button>
-        <button id="saveBtn" type="button" hidden>生値を補正値として保存</button>
+        <button id="saveBtn" type="button" hidden>この測定値を端末の補正値として保存</button>
         <button id="helpBtn" class="help-btn" type="button">使い方・注意点</button>
+
+        <!-- 機材の元の設定（戻し忘れ防止） -->
+        <details class="config-card pend-card">
+            <summary>機材の元の設定を記録（戻し忘れ防止）</summary>
+            <p class="pend-note">共用機材のオフセットを変更する前に、元の値を記録します。「元に戻した」を押すまで、画面上部に警告が出ます。</p>
+            <div class="control-group"><label for="pendName">機材名</label><input id="pendName" type="text" placeholder="例: Studio A モニター" autocomplete="off"></div>
+            <div class="control-group"><label for="pendOrig">元の設定値</label><input id="pendOrig" type="text" placeholder="例: 0ms / 2F" autocomplete="off"></div>
+            <button id="pendAdd" type="button">記録する</button>
+        </details>
     </div>
 
     <!-- 使い方シート -->
@@ -303,7 +305,8 @@
             <ul>
                 <li>「音声が ○ms / ○F 早い・遅い」は、<b>映像に対する音声</b>のズレです。</li>
                 <li>ばらつき（σ）が大きいときは、測り直してください。</li>
-                <li>使用端末の補正値を、測定値から引いて表示しています。</li>
+                <li><b>補正前</b>は、iPhone自身の遅れを含んだ測定値です。ここから「端末補正」を引いたものが結果です。</li>
+                <li>基準の再生系を測ったときの「補正前」の値が、その端末の補正値になります（保存ボタンで登録できます）。</li>
             </ul>
 
             <h3>注意点</h3>
@@ -317,7 +320,6 @@
                 <li>映像が検出されないときは、カメラを画面全体に向け、距離を近づけてください。</li>
             </ul>
 
-            <button id="helpClose" type="button">閉じる</button>
         </div>
     </div>
 
@@ -397,7 +399,7 @@ function show() {
   if (!raw.length) return;
   const s = stats(), off = Number(sel.value), c = s.m - off, fps = Number($('fpsSelect').value), fr = c * fps / 1000;
   resVal.textContent = Math.abs(c) < 0.05 ? 'ズレなし 0.0ms / 0.0F' : `音声が ${Math.abs(c).toFixed(1)}ms / ${Math.abs(fr).toFixed(1)}F ${c > 0 ? '遅い' : '早い'}`;
-  resDesc.innerHTML = `換算 ${$('fpsSelect').selectedOptions[0].textContent}<br>採用 ${s.n}/${s.all}回 ／ ばらつき σ=${s.sd.toFixed(1)}ms ／ 生値 ${s.m.toFixed(1)}ms − 補正 ${off.toFixed(1)}ms`;
+  resDesc.innerHTML = `換算 ${$('fpsSelect').selectedOptions[0].textContent} ／ 採用 ${s.n}/${s.all}回<br>ばらつき σ=${s.sd.toFixed(1)}ms<br>補正前 ${s.m.toFixed(1)}ms − 端末補正 ${off < 0 ? `(${off.toFixed(1)}ms)` : `${off.toFixed(1)}ms`} = ${c.toFixed(1)}ms`;
   saveBtn.hidden = s.n < 10;
 }
 sel.addEventListener('change', show);
@@ -472,7 +474,7 @@ saveBtn.addEventListener('click', () => {
 // 使い方シート
 const help = $('help');
 $('helpBtn').addEventListener('click', () => { help.hidden = false; help.querySelector('.sheet-body').scrollTop = 0; });
-['helpClose', 'helpClose2'].forEach(id => $(id).addEventListener('click', () => { help.hidden = true; }));
+$('helpClose2').addEventListener('click', () => { help.hidden = true; });
 help.addEventListener('click', e => { if (e.target === help) help.hidden = true; });
 // 戻し忘れ防止：元の設定を記録し、「元に戻した」を押すまで警告を出し続ける（このiPhone内のみ）
 const PEND_KEY = 'syncChecker.pending', pendEl = $('pending');
