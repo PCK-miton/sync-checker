@@ -222,7 +222,7 @@
                     </svg>
                     Sync Checker
                 </h1>
-                <span class="badge">Ver0.2</span>
+                <span class="badge">Ver0.3</span>
             </div>
         </div>
 
@@ -266,7 +266,7 @@
 
         <!-- スタートボタン -->
         <button class="primary" id="startBtn" type="button">測定開始</button>
-        <button id="saveBtn" type="button" hidden>この測定値を端末の補正値として保存</button>
+        <button id="resetBtn" class="help-btn" type="button">数値をリセット</button>
         <button id="helpBtn" class="help-btn" type="button">使い方・注意点</button>
 
         <!-- 機材の元の設定（戻し忘れ防止） -->
@@ -306,7 +306,8 @@
                 <li>「音声が ○ms / ○F 早い・遅い」は、<b>映像に対する音声</b>のズレです。</li>
                 <li>ばらつき（σ）が大きいときは、測り直してください。</li>
                 <li><b>補正前</b>は、iPhone自身の遅れを含んだ測定値です。ここから「端末補正」を引いたものが結果です。</li>
-                <li>基準の再生系を測ったときの「補正前」の値が、その端末の補正値になります（保存ボタンで登録できます）。</li>
+                <li>「数値をリセット」を押すと、測定結果を消して待機状態に戻ります。</li>
+                <li>端末補正は、基準の再生系で測った固定値です。<b>測定する環境に合わせて変えないでください。</b>「補正なし」の値は、iPhone自身の遅れを含みます。</li>
             </ul>
 
             <h3>注意点</h3>
@@ -314,7 +315,7 @@
                 <li>共用機材のオフセットを変更したら、先に「機材の元の設定を記録」しておくと、戻すまで警告が出ます（このiPhoneの中だけの記録です）。</li>
                 <li>測定中は、<b>距離・画面の明るさ・音量</b>を変えないでください。</li>
                 <li>補正値は、基準の再生系で測った値です。<b>同じ条件</b>で使ってください。</li>
-                <li>ホーム画面アプリとSafariでは、保存した校正値が別になります。</li>
+                <li>ホーム画面アプリとSafariでは、戻し忘れの記録が別になります。</li>
                 <li>Bluetoothイヤホンは外してください。通話や他のカメラ・マイクアプリは閉じてください。</li>
                 <li>測定中は画面をロックしないでください。周囲の雑音が大きいと音を拾えません。</li>
                 <li>映像が検出されないときは、カメラを画面全体に向け、距離を近づけてください。</li>
@@ -326,9 +327,8 @@
     <script>
 (() => {
 const $ = id => document.getElementById(id);
-const startBtn = $('startBtn'), saveBtn = $('saveBtn'), video = $('cam'), statusEl = $('status'),
+const startBtn = $('startBtn'), resetBtn = $('resetBtn'), video = $('cam'), statusEl = $('status'),
       sel = $('deviceSelect'), resVal = document.querySelector('.result-value'), resDesc = document.querySelector('.result-desc');
-const CAL_KEY = 'syncChecker.cal';
 
 // 音声側：1kHzをGoertzelで検出（AudioWorklet）。ctx時刻と一緒に128サンプルごとに送る
 const WORKLET = `class P extends AudioWorkletProcessor{
@@ -339,13 +339,7 @@ const WORKLET = `class P extends AudioWorkletProcessor{
   this.port.postMessage([currentTime,2*Math.sqrt(Math.max(p,0))/x.length]);return true;}}
  registerProcessor('det',P);`;
 
-function addCal(c) {
-  let o = $('calOpt');
-  if (!o) { o = document.createElement('option'); o.id = 'calOpt'; sel.appendChild(o); }
-  o.value = String(c.offsetMs);
-  o.textContent = `保存した校正値 (${c.offsetMs.toFixed(1)}ms)`;
-}
-try { const c = JSON.parse(localStorage.getItem(CAL_KEY) || 'null'); if (c) addCal(c); } catch (e) {}
+try { localStorage.removeItem('syncChecker.cal'); } catch (e) {} // 旧バージョンの保存値を削除
 
 // 立ち上がり検出：ベースライン＋しきい値を超えたら記録開始、戻ったらイベント確定
 function detector(minThr, k, maxDur, onEvent) {
@@ -399,14 +393,13 @@ function show() {
   if (!raw.length) return;
   const s = stats(), off = Number(sel.value), c = s.m - off, fps = Number($('fpsSelect').value), fr = c * fps / 1000;
   resVal.textContent = Math.abs(c) < 0.05 ? 'ズレなし 0.0ms / 0.0F' : `音声が ${Math.abs(c).toFixed(1)}ms / ${Math.abs(fr).toFixed(1)}F ${c > 0 ? '遅い' : '早い'}`;
-  resDesc.innerHTML = `換算 ${$('fpsSelect').selectedOptions[0].textContent} ／ 採用 ${s.n}/${s.all}回<br>ばらつき σ=${s.sd.toFixed(1)}ms<br>補正前 ${s.m.toFixed(1)}ms − 端末補正 ${off < 0 ? `(${off.toFixed(1)}ms)` : `${off.toFixed(1)}ms`} = ${c.toFixed(1)}ms`;
-  saveBtn.hidden = s.n < 10;
+  resDesc.innerHTML = `換算 ${$('fpsSelect').selectedOptions[0].textContent} ／ 採用 ${s.n}/${s.all}回<br>ばらつき σ=${s.sd.toFixed(1)}ms<br>補正前 ${s.m.toFixed(1)}ms − 端末補正 ${off < 0 ? `(${off.toFixed(1)}ms)` : `${off.toFixed(1)}ms`} = ${c.toFixed(1)}ms${off === 0 ? '<br>※補正なしの値です。iPhone自身の遅れを含みます' : ''}`;
 }
 sel.addEventListener('change', show);
 $('fpsSelect').addEventListener('change', show);
 
 async function start() {
-  raw = []; vq = []; aq = []; nv = na = 0; saveBtn.hidden = true;
+  raw = []; vq = []; aq = []; nv = na = 0;
   resVal.textContent = '測定中…'; resDesc.innerHTML = 'カメラを画面全体に向けて<br>測定ファイルを再生してください';
   ctx = new (window.AudioContext || window.webkitAudioContext)(); ctx.resume(); // タップ内で作る（iOS対策）
   running = true; startBtn.textContent = '測定停止';
@@ -465,12 +458,14 @@ function stop() {
   show();
 }
 startBtn.addEventListener('click', () => running ? stop() : start());
-saveBtn.addEventListener('click', () => {
-  const s = stats(), c = { offsetMs: Math.round(s.m * 10) / 10, sd: s.sd, n: s.n, date: new Date().toISOString() };
-  try { localStorage.setItem(CAL_KEY, JSON.stringify(c)); } catch (e) {}
-  addCal(c); sel.value = String(c.offsetMs); show();
-  saveBtn.hidden = true; resDesc.innerHTML += '<br>校正値として保存しました';
-});
+function resetAll() {
+  if (running) stop();
+  raw = []; vq = []; aq = []; nv = na = 0;
+  resVal.textContent = '測定を待機しています';
+  resDesc.innerHTML = '「測定開始」を押し、カメラを画面全体に向けて<br>測定ファイルを再生してください';
+  statusEl.textContent = '待機中';
+}
+resetBtn.addEventListener('click', resetAll);
 // 使い方シート
 const help = $('help');
 $('helpBtn').addEventListener('click', () => { help.hidden = false; help.querySelector('.sheet-body').scrollTop = 0; });
