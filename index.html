@@ -194,6 +194,7 @@
         input[type="text"] { width: 100%; padding: 12px; font-size: 16px; font-family: inherit; border-radius: 8px; border: 1px solid var(--border-color);
             background-color: var(--bg-color); color: var(--text-color); box-sizing: border-box; -webkit-appearance: none; appearance: none; }
         input[type="text"]:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+        select.need { border-color: #ef4444; }
         button.primary {
             background-color: var(--accent-color);
             color: #0f172a;
@@ -222,7 +223,7 @@
                     </svg>
                     Sync Checker
                 </h1>
-                <span class="badge">Ver0.8</span>
+                <span class="badge">Ver0.9</span>
             </div>
         </div>
 
@@ -240,8 +241,10 @@
                 <div class="control-group">
                     <label for="deviceSelect">使用端末 (遅延補正)</label>
                     <select id="deviceSelect">
-                        <option value="0">補正なし (0ms)</option>
-                        <option value="-19.7" selected>iPhone 15 (実測: −19.7ms)</option>
+                        <option value="" selected disabled>機種を選んでください</option>
+                        <option value="-19.7">iPhone 15 (実測: −19.7ms)</option>
+                        <option value="-47.3">iPhone 17e (実測: −47.3ms)</option>
+                        <option value="0">補正なし (校正用)</option>
                     </select>
                 </div>
             </div>
@@ -293,7 +296,7 @@
 
             <h3>測り方</h3>
             <ol>
-                <li>「フレーム換算」と「使用端末」を選びます。</li>
+                <li>「フレーム換算」と「使用端末」を選びます。<b>使用端末を選ばないと、測定を始められません。</b></li>
                 <li>「測定開始」を押します。</li>
                 <li>カメラを<b>画面全体</b>に向け、iPhoneを<b>毎回同じ位置・同じ向き</b>に置きます。指やケースでマイクの穴をふさがないでください。</li>
                 <li>測定ファイル（黒の画面に1フレームのフラッシュ＋1kHzのビープ）を再生します。</li>
@@ -398,9 +401,14 @@ function show() {
   resDesc.innerHTML = `換算 ${$('fpsSelect').selectedOptions[0].textContent} ／ 採用 ${s.n}/${s.all}回<br>ばらつき σ=${s.sd.toFixed(1)}ms<br>補正前 ${s.m.toFixed(1)}ms − 端末補正 ${off < 0 ? `(${off.toFixed(1)}ms)` : `${off.toFixed(1)}ms`} = ${c.toFixed(1)}ms${off === 0 ? '<br>※補正なしの値です。iPhone自身の遅れを含みます' : ''}`;
 }
 sel.addEventListener('change', show);
+sel.addEventListener('change', () => { sel.classList.remove('need'); if (resVal.textContent === '使用端末を選んでください') resetAll(); });
 $('fpsSelect').addEventListener('change', show);
 
 async function start() {
+  if (sel.value === '') {
+    sel.classList.add('need'); resVal.textContent = '使用端末を選んでください';
+    resDesc.innerHTML = '「使用端末」でお使いの機種を選んでから<br>「測定開始」を押してください'; return;
+  }
   raw = []; vq = []; aq = []; nv = na = 0;
   resVal.textContent = '測定中…'; resDesc.innerHTML = 'カメラを画面全体に向けて<br>測定ファイルを再生してください';
   ctx = new (window.AudioContext || window.webkitAudioContext)(); ctx.resume(); // タップ内で作る（iOS対策）
