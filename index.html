@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- 通信禁止：このページのスクリプトは外部へ一切データを送れない（ブラウザが遮断） -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; img-src 'self' data:; media-src blob: mediastream: data:; connect-src 'none'; worker-src 'self' blob:; base-uri 'none'; form-action 'none'">
     <title>Sync Checker</title>
 
     <!-- ホーム画面アプリ設定（iOS） -->
@@ -174,6 +176,24 @@
         .sheet-body li { margin-bottom: 4px; }
         .sheet-body .note { font-size: 0.8rem; color: var(--text-secondary); margin: 8px 0 0; line-height: 1.5; }
         .sheet-body button { margin-top: 20px; }
+        .sheet-body { overscroll-behavior: contain; }
+        .sheet-body .sheet-head { position: sticky; top: -20px; z-index: 1; display: flex; align-items: center; justify-content: space-between;
+            margin: -20px -20px 12px; padding: 14px 20px; background: var(--card-bg); border-bottom: 1px solid var(--border-color); }
+        .sheet-body .sheet-head h2 { margin: 0; }
+        .sheet-body .sheet-head button { width: auto; margin-top: 0; padding: 8px 16px; font-size: 14px; }
+        .pending { background: #7f1d1d; border: 1px solid #ef4444; border-radius: 12px; padding: 12px 16px; box-sizing: border-box;
+            position: sticky; top: calc(8px + env(safe-area-inset-top)); z-index: 5; }
+        .pending[hidden] { display: none; }
+        .pending-title { font-weight: bold; font-size: 0.95rem; margin-bottom: 8px; }
+        .pending-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 0.9rem; padding: 6px 0; }
+        .pending-row button { width: auto; flex: none; padding: 8px 12px; font-size: 14px; }
+        .pend-card summary { cursor: pointer; font-size: 0.95rem; }
+        .pend-card .control-group { margin-top: 12px; }
+        .pend-card button { margin-top: 12px; }
+        .pend-note { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; margin: 8px 0 0; }
+        input[type="text"] { width: 100%; padding: 12px; font-size: 16px; font-family: inherit; border-radius: 8px; border: 1px solid var(--border-color);
+            background-color: var(--bg-color); color: var(--text-color); box-sizing: border-box; -webkit-appearance: none; appearance: none; }
+        input[type="text"]:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
         button.primary {
             background-color: var(--accent-color);
             color: #0f172a;
@@ -190,6 +210,9 @@
 <body>
 
     <div class="container">
+        <!-- 戻し忘れ警告 -->
+        <div class="pending" id="pending" hidden></div>
+
         <!-- ヘッダー -->
         <div class="header-card">
             <div class="header">
@@ -224,6 +247,15 @@
             </div>
         </div>
 
+        <!-- 機材の元の設定（戻し忘れ防止） -->
+        <details class="config-card pend-card">
+            <summary>機材の元の設定を記録（戻し忘れ防止）</summary>
+            <p class="pend-note">共用機材のオフセットを変更する前に、元の値を記録します。「元に戻した」を押すまで、画面上部に警告が出ます。</p>
+            <div class="control-group"><label for="pendName">機材名</label><input id="pendName" type="text" placeholder="例: Studio A モニター" autocomplete="off"></div>
+            <div class="control-group"><label for="pendOrig">元の設定値</label><input id="pendOrig" type="text" placeholder="例: 0ms / 2F" autocomplete="off"></div>
+            <button id="pendAdd" type="button">記録する</button>
+        </details>
+
         <!-- プレビュー画面 -->
         <div class="preview-card">
             <div class="preview-container">
@@ -248,7 +280,7 @@
     <!-- 使い方シート -->
     <div class="sheet" id="help" hidden>
         <div class="sheet-body" role="dialog" aria-label="使い方・注意点">
-            <h2>使い方・注意点</h2>
+            <div class="sheet-head"><h2>使い方・注意点</h2><button id="helpClose2" type="button">✕ 閉じる</button></div>
 
             <h3>はじめに（初回のみ）</h3>
             <ol>
@@ -276,6 +308,7 @@
 
             <h3>注意点</h3>
             <ul>
+                <li>共用機材のオフセットを変更したら、先に「機材の元の設定を記録」しておくと、戻すまで警告が出ます（このiPhoneの中だけの記録です）。</li>
                 <li>測定中は、<b>距離・画面の明るさ・音量</b>を変えないでください。</li>
                 <li>補正値は、基準の再生系で測った値です。<b>同じ条件</b>で使ってください。</li>
                 <li>ホーム画面アプリとSafariでは、保存した校正値が別になります。</li>
@@ -438,9 +471,40 @@ saveBtn.addEventListener('click', () => {
 });
 // 使い方シート
 const help = $('help');
-$('helpBtn').addEventListener('click', () => { help.hidden = false; });
-$('helpClose').addEventListener('click', () => { help.hidden = true; });
+$('helpBtn').addEventListener('click', () => { help.hidden = false; help.querySelector('.sheet-body').scrollTop = 0; });
+['helpClose', 'helpClose2'].forEach(id => $(id).addEventListener('click', () => { help.hidden = true; }));
 help.addEventListener('click', e => { if (e.target === help) help.hidden = true; });
+// 戻し忘れ防止：元の設定を記録し、「元に戻した」を押すまで警告を出し続ける（このiPhone内のみ）
+const PEND_KEY = 'syncChecker.pending', pendEl = $('pending');
+let pend = [];
+try { pend = JSON.parse(localStorage.getItem(PEND_KEY) || '[]'); } catch (e) {}
+const savePend = () => { try { localStorage.setItem(PEND_KEY, JSON.stringify(pend)); } catch (e) {} renderPend(); };
+function renderPend() {
+  pendEl.replaceChildren();
+  pendEl.hidden = !pend.length;
+  if (!pend.length) return;
+  const t = document.createElement('div'); t.className = 'pending-title'; t.textContent = '⚠ 機材の設定が元に戻っていません'; pendEl.appendChild(t);
+  pend.forEach(p => {
+    const d = new Date(p.at), row = document.createElement('div'); row.className = 'pending-row';
+    const tx = document.createElement('span');
+    tx.textContent = `${p.name}（元の値: ${p.orig}）${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}記録`;
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = '元に戻した';
+    b.addEventListener('click', () => {
+      if (confirm(`${p.name} を元の値（${p.orig}）に戻しましたか？`)) { pend = pend.filter(x => x.id !== p.id); savePend(); }
+    });
+    row.append(tx, b); pendEl.appendChild(row);
+  });
+}
+$('pendAdd').addEventListener('click', () => {
+  const name = $('pendName').value.trim(), orig = $('pendOrig').value.trim();
+  if (!name || !orig) { alert('機材名と元の設定値を入力してください'); return; }
+  pend.push({ id: Date.now(), name, orig, at: new Date().toISOString() });
+  $('pendName').value = ''; $('pendOrig').value = ''; savePend();
+});
+renderPend();
+
+// オフライン起動用（初回に一度開けば、以後は通信なしで起動できる）
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 })();
     </script>
 </body>
