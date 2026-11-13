@@ -222,7 +222,7 @@
                     </svg>
                     Sync Checker
                 </h1>
-                <span class="badge">Ver0.7</span>
+                <span class="badge">Ver0.8</span>
             </div>
         </div>
 
@@ -332,10 +332,10 @@ const startBtn = $('startBtn'), resetBtn = $('resetBtn'), video = $('cam'), stat
 // 音声側：1kHzをGoertzelで検出（AudioWorklet）。ctx時刻と一緒に128サンプルごとに送る
 const WORKLET = `class P extends AudioWorkletProcessor{
  constructor(){super();this.c=2*Math.cos(2*Math.PI*1000/sampleRate);}
- process(i){const x=i[0][0];if(!x)return true;let a=0,b=0;
-  for(let n=0;n<x.length;n++){const s=x[n]+this.c*a-b;b=a;a=s;}
+ process(i){const x=i[0][0];if(!x)return true;let a=0,b=0,pk=0;
+  for(let n=0;n<x.length;n++){const v=x[n],s=v+this.c*a-b;b=a;a=s;if(Math.abs(v)>pk)pk=Math.abs(v);}
   const p=a*a+b*b-this.c*a*b;
-  this.port.postMessage([currentTime,2*Math.sqrt(Math.max(p,0))/x.length]);return true;}}
+  this.port.postMessage([currentTime,2*Math.sqrt(Math.max(p,0))/x.length,pk]);return true;}}
  registerProcessor('det',P);`;
 
 try { localStorage.removeItem('syncChecker.cal'); } catch (e) {} // 旧バージョンの保存値を削除
@@ -420,7 +420,8 @@ async function start() {
     let off = Infinity, last = 0;
     const aDet = detector(0.003, 8, 300, ev => push('a', aEst(ev)), aInfo);
     node.port.onmessage = e => {
-      const [ct, mag] = e.data, now = performance.now(), d = now - ct * 1000;
+      const [ct, mag, pk] = e.data, now = performance.now(), d = now - ct * 1000;
+      aInfo.inPeak = Math.max(pk, (aInfo.inPeak || 0) * 0.999);
       if (off === Infinity) off = d; else off += (now - last) * 1e-4;
       last = now; off = Math.min(off, d);
       aDet(ct * 1000 + off, mag);
@@ -445,7 +446,7 @@ async function start() {
       if (!running) return clearInterval(tick);
       const st = stream.getVideoTracks()[0].getSettings();
       statusEl.innerHTML = `映像${nv} 音${na} 組${raw.length} ｜ ${Math.round(st.frameRate || 0)}fps ${src}`
-        + (vInfo.thr && aInfo.thr ? `<br><small>閾値 映像${vInfo.thr.toFixed(1)} 音${aInfo.thr.toFixed(4)} ／ 強さ ${(vInfo.last || 0).toFixed(1)} ${(aInfo.last || 0).toFixed(4)}</small>` : '');
+        + (vInfo.thr && aInfo.thr ? `<br><small>閾値 映像${vInfo.thr.toFixed(1)} 音${aInfo.thr.toFixed(4)} ／ 強さ ${(vInfo.last || 0).toFixed(1)} ${(aInfo.last || 0).toFixed(4)}<br>入力ピーク ${(aInfo.inPeak || 0).toFixed(3)}</small>` : '');
     }, 500);
   } catch (e) {
     stop(); resVal.textContent = '開始できません';
