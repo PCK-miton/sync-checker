@@ -222,7 +222,7 @@
                     </svg>
                     Sync Checker
                 </h1>
-                <span class="badge">Ver0.3</span>
+                <span class="badge">Ver0.5</span>
             </div>
         </div>
 
@@ -241,7 +241,7 @@
                     <label for="deviceSelect">使用端末 (遅延補正)</label>
                     <select id="deviceSelect">
                         <option value="0">補正なし (0ms)</option>
-                        <option value="-26" selected>iPhone 15 (実測: −26ms)</option>
+                        <option value="-19.7" selected>iPhone 15 (実測: −19.7ms)</option>
                         <option value="80">iPhone 15 Pro (旧値: 80ms・要再測定)</option>
                     </select>
                 </div>
@@ -297,7 +297,7 @@
                 <li>「フレーム換算」と「使用端末」を選びます。</li>
                 <li>「測定開始」を押します。</li>
                 <li>カメラを<b>画面全体</b>に向け、iPhoneを<b>毎回同じ位置・同じ向き</b>に置きます。指やケースでマイクの穴をふさがないでください。</li>
-                <li>測定ファイル（黒の画面に1フレームのフラッシュ＋1kHzのビープ）を再生します。</li>
+                <li>測定ファイル（黒の画面に1フレームのフラッシュ＋1kHzのビープ）を再生します。開始後の約2秒は、感度の自動調整のため数えません。</li>
                 <li>60回で自動停止します。途中で止めるときは「測定停止」を押します。</li>
             </ol>
 
@@ -342,18 +342,27 @@ const WORKLET = `class P extends AudioWorkletProcessor{
 try { localStorage.removeItem('syncChecker.cal'); } catch (e) {} // 旧バージョンの保存値を削除
 
 // 立ち上がり検出：ベースライン＋しきい値を超えたら記録開始、戻ったらイベント確定
-function detector(minThr, k, maxDur, onEvent) {
-  let base = null, sig = 0, ev = null, prev = null, lock = 0;
+function detector(floor, k, win, every, maxDur, onEvent, info) {
+  // しきい値は直近(win ms)の信号から自動で決める：中央値＝基準、ばらつき（中央絶対偏差と上位10%）×k、ただし floor 以上
+  const buf = []; let base = null, thr = floor, ev = null, prev = null, lock = 0, n = 0, t0 = null;
   return (t, v) => {
-    if (base === null) { base = v; prev = { t, v }; return; }
-    if (t < lock) { prev = { t, v }; return; }
-    const thr = Math.max(minThr, k * sig);
+    if (t0 === null) t0 = t;
+    buf.push({ t, v });
+    while (buf[0].t < t - win) buf.shift();
+    if (++n % every === 0 && t - t0 > 1500) {
+      const vs = buf.map(p => p.v).sort((x, y) => x - y), m = vs[vs.length >> 1];
+      const dev = vs.map(x => Math.abs(x - m)).sort((x, y) => x - y);
+      const sig = Math.max(1.4826 * dev[dev.length >> 1], dev[Math.floor(dev.length * 0.9)] / 1.645);
+      base = m; thr = Math.max(floor, k * sig); info.thr = thr;
+    }
+    if (base === null || t < lock) { prev = { t, v }; return; }
     if (!ev) {
       if (v > base + thr) ev = { pts: [prev, { t, v }], base, thr };
-      else { base += (v - base) * 0.05; sig += (Math.abs(v - base) - sig) * 0.05; }
     } else {
       ev.pts.push({ t, v });
-      if (v < ev.base + ev.thr * 0.5 || t - ev.pts[0].t > maxDur) { lock = t + 300; onEvent(ev); ev = null; }
+      if (v < ev.base + ev.thr * 0.5 || t - ev.pts[0].t > maxDur) {
+        lock = t + 300; info.last = Math.max(...ev.pts.map(p => p.v)) - ev.base; onEvent(ev); ev = null;
+      }
     }
     prev = { t, v };
   };
@@ -370,6 +379,7 @@ const aEst = ev => {
   return ev.pts[0].t;
 };
 
+const aInfo = {}, vInfo = {};
 let running = false, stream, ctx, wake, raw = [], vq = [], aq = [], nv = 0, na = 0, src = '-';
 const med = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
@@ -416,7 +426,7 @@ async function start() {
 
     // 音：ctx時間→performance時間は「最小遅延」追従で変換（ジッタとドリフトを抑える）
     let off = Infinity, last = 0;
-    const aDet = detector(0.003, 8, 300, ev => push('a', aEst(ev)));
+    const aDet = detector(0.0015, 8, 3000, 100, 300, ev => push('a', aEst(ev)), aInfo);
     node.port.onmessage = e => {
       const [ct, mag] = e.data, now = performance.now(), d = now - ct * 1000;
       if (off === Infinity) off = d; else off += (now - last) * 1e-4;
@@ -427,7 +437,7 @@ async function start() {
     // 映像：フレームごとの平均輝度
     const cv = document.createElement('canvas'); cv.width = 32; cv.height = 18;
     const g = cv.getContext('2d', { willReadFrequently: true });
-    const vDet = detector(4, 8, 300, ev => push('v', vEst(ev)));
+    const vDet = detector(4, 6, 4000, 15, 300, ev => push('v', vEst(ev)), vInfo);
     const next = () => video.requestVideoFrameCallback ? video.requestVideoFrameCallback(onFrame) : requestAnimationFrame(n => onFrame(n, null));
     const onFrame = (now, md) => {
       if (!running) return;
@@ -439,10 +449,12 @@ async function start() {
       next();
     };
     next();
+    const tStart = performance.now();
     const tick = setInterval(() => {
       if (!running) return clearInterval(tick);
       const st = stream.getVideoTracks()[0].getSettings();
-      statusEl.textContent = `映像${nv} 音${na} 組${raw.length} ｜ ${Math.round(st.frameRate || 0)}fps ${src}`;
+      statusEl.innerHTML = `${performance.now() - tStart < 2000 ? '感度調整中… ' : ''}映像${nv} 音${na} 組${raw.length} ｜ ${Math.round(st.frameRate || 0)}fps ${src}`
+        + (vInfo.thr && aInfo.thr ? `<br><small>閾値 映像${vInfo.thr.toFixed(1)} 音${aInfo.thr.toFixed(4)} ／ 強さ ${(vInfo.last || 0).toFixed(1)} ${(aInfo.last || 0).toFixed(4)}</small>` : '');
     }, 500);
   } catch (e) {
     stop(); resVal.textContent = '開始できません';
