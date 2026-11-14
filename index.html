@@ -223,7 +223,7 @@
                     </svg>
                     Sync Checker
                 </h1>
-                <span class="badge">Ver0.10</span>
+                <span class="badge">Ver0.12</span>
             </div>
         </div>
 
@@ -242,11 +242,19 @@
                     <label for="deviceSelect">使用端末 (遅延補正)</label>
                     <select id="deviceSelect">
                         <option value="" selected disabled>機種を選んでください</option>
-                        <option value="-19.7">iPhone 15 (実測: −19.7ms)</option>
-                        <option value="-47.3">iPhone 17e (実測: −47.3ms)</option>
+                        <option value="-19.7" data-d0="2">iPhone 15 (実測: −19.7ms)</option>
+                        <option value="-47.3" data-d0="2">iPhone 17e (実測: −47.3ms)</option>
                         <option value="0">補正なし (校正用)</option>
                     </select>
                 </div>
+            </div>
+            <div class="control-group" style="margin-top: 12px;">
+                <label for="distSelect">スピーカーまでの距離（音の出どころ）</label>
+                <select id="distSelect">
+                    <option value="" selected disabled>選んでください</option>
+                    <option value="0">ヘッドホン・卓上スピーカー（0m）</option>
+                    <option value="4">部屋のスピーカー（約4m）</option>
+                </select>
             </div>
             <div class="control-group" style="margin-top: 12px;">
                 <label for="sensSelect">音の感度（反応が悪いときは「高」）</label>
@@ -304,7 +312,7 @@
 
             <h3>測り方</h3>
             <ol>
-                <li>「フレーム換算」と「使用端末」を選びます。<b>使用端末を選ばないと、測定を始められません。</b></li>
+                <li>「フレーム換算」「使用端末」「スピーカーまでの距離」を選びます。<b>使用端末と距離を選ばないと、測定を始められません。</b></li>
                 <li>「測定開始」を押します。</li>
                 <li>カメラを<b>画面全体</b>に向け、iPhoneを<b>毎回同じ位置・同じ向き</b>に置きます。指やケースでマイクの穴をふさがないでください。</li>
                 <li>測定ファイル（黒の画面に1フレームのフラッシュ＋1kHzのビープ）を再生します。</li>
@@ -327,6 +335,7 @@
                 <li>補正値は、基準の再生系で測った値です。<b>同じ条件</b>で使ってください。</li>
                 <li>ホーム画面アプリとSafariでは、戻し忘れの記録が別になります。</li>
                 <li>Bluetoothイヤホンは外してください。通話や他のカメラ・マイクアプリは閉じてください。</li>
+                <li>音は1mで約3ms遅れます。距離の分は自動で補正しています（ヘッドホン・卓上スピーカーは0m、部屋のスピーカーは約4m）。実際の距離が大きく違うと、1mにつき約3msずれます。ヘッドホンは、iPhoneの下端（マイク）をイヤーカップに当てて測ります。</li>
                 <li>音の反応が悪いときは、「音の感度」を「高」にします。補正値は感度「標準」で測った値なので、感度を変えたときは、基準の再生系で結果が0ms付近になるか確認してください。</li>
                 <li>測定中は画面をロックしないでください。周囲の雑音が大きいと音を拾えません。</li>
                 <li>映像が検出されないときは、カメラを画面全体に向け、距離を近づけてください。</li>
@@ -387,6 +396,8 @@ const aEst = ev => {
 };
 
 const aInfo = {}, vInfo = {};
+const distSel = $('distSelect'), SOUND = 2.915; // 音の速さ: 1mあたり約2.915ms
+const PROMPTS = ['使用端末を選んでください', '音の出どころを選んでください'];
 const sens = $('sensSelect'), AUDIO_FLOOR = { std: 0.003, hi: 0.0015, max: 0.0008 };
 try { const v = localStorage.getItem('syncChecker.sens'); if (v && AUDIO_FLOOR[v]) sens.value = v; } catch (e) {}
 sens.addEventListener('change', () => { try { localStorage.setItem('syncChecker.sens', sens.value); } catch (e) {} });
@@ -411,18 +422,29 @@ function stats() {
 }
 function show() {
   if (!raw.length) return;
-  const s = stats(), off = Number(sel.value), c = s.m - off, fps = Number($('fpsSelect').value), fr = c * fps / 1000;
+  const s = stats(), off = Number(sel.value), fps = Number($('fpsSelect').value);
+  const d0 = sel.selectedOptions[0].dataset.d0, dist = distSel.value, useDist = d0 !== undefined && dist !== '';
+  const dc = useDist ? (Number(dist) - Number(d0)) * SOUND : 0; // 補正値を測ったときの距離との差による、音の遅れ
+  const c = s.m - off - dc, fr = c * fps / 1000;
+  const fmt = x => x < 0 ? `(${x.toFixed(1)}ms)` : `${x.toFixed(1)}ms`;
   resVal.textContent = Math.abs(c) < 0.05 ? 'ズレなし 0.0ms / 0.0F' : `音声が ${Math.abs(c).toFixed(1)}ms / ${Math.abs(fr).toFixed(1)}F ${c > 0 ? '遅い' : '早い'}`;
-  resDesc.innerHTML = `換算 ${$('fpsSelect').selectedOptions[0].textContent} ／ 採用 ${s.n}/${s.all}回<br>ばらつき σ=${s.sd.toFixed(1)}ms<br>補正前 ${s.m.toFixed(1)}ms − 端末補正 ${off < 0 ? `(${off.toFixed(1)}ms)` : `${off.toFixed(1)}ms`} = ${c.toFixed(1)}ms${off === 0 ? '<br>※補正なしの値です。iPhone自身の遅れを含みます' : ''}`;
+  resDesc.innerHTML = `換算 ${$('fpsSelect').selectedOptions[0].textContent} ／ 採用 ${s.n}/${s.all}回<br>ばらつき σ=${s.sd.toFixed(1)}ms<br>補正前 ${s.m.toFixed(1)}ms − 端末補正 ${fmt(off)}`
+    + (useDist ? `<br>− 距離補正 ${fmt(dc)}（${distSel.selectedOptions[0].textContent}）` : '')
+    + ` = ${c.toFixed(1)}ms` + (off === 0 ? '<br>※補正なしの値です。iPhone自身の遅れと距離の遅れを含みます。補正値を作るときは、スピーカーまで2mで測ります' : '');
 }
 sel.addEventListener('change', show);
-sel.addEventListener('change', () => { sel.classList.remove('need'); if (resVal.textContent === '使用端末を選んでください') resetAll(); });
+sel.addEventListener('change', () => { sel.classList.remove('need'); if (PROMPTS.includes(resVal.textContent)) resetAll(); });
+distSel.addEventListener('change', show);
+distSel.addEventListener('change', () => { distSel.classList.remove('need'); if (PROMPTS.includes(resVal.textContent)) resetAll(); });
 $('fpsSelect').addEventListener('change', show);
 
 async function start() {
-  if (sel.value === '') {
-    sel.classList.add('need'); resVal.textContent = '使用端末を選んでください';
-    resDesc.innerHTML = '「使用端末」でお使いの機種を選んでから<br>「測定開始」を押してください'; return;
+  if (sel.value === '' || (distSel.value === '' && sel.selectedOptions[0].dataset.d0 !== undefined)) {
+    const noDev = sel.value === '';
+    (noDev ? sel : distSel).classList.add('need');
+    resVal.textContent = noDev ? PROMPTS[0] : PROMPTS[1];
+    resDesc.innerHTML = noDev ? '「使用端末」でお使いの機種を選んでから<br>「測定開始」を押してください' : '「スピーカーまでの距離」を選んでから<br>「測定開始」を押してください';
+    return;
   }
   raw = []; vq = []; aq = []; nv = na = 0;
   resVal.textContent = '測定中…'; resDesc.innerHTML = 'カメラを画面全体に向けて<br>測定ファイルを再生してください';
