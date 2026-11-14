@@ -36,8 +36,7 @@
             color: var(--text-color);
             margin: 0;
             /* iPhoneのノッチ・ホームバーを避ける */
-            padding: calc(20px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
-                     calc(20px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
+            padding: calc(8px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -50,13 +49,13 @@
             max-width: 500px;
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 10px;
         }
         .header-card, .config-card, .preview-card, .result-card {
             background-color: var(--card-bg);
             border: 1px solid var(--border-color);
             border-radius: 12px;
-            padding: 20px;
+            padding: 14px;
             box-sizing: border-box;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
@@ -66,22 +65,22 @@
             align-items: center;
         }
         h1 {
-            font-size: 1.25rem;
+            font-size: 1.05rem;
             margin: 0;
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        h1 svg { width: 24px; height: 30px; flex: none; }
+        h1 svg { width: 16px; height: 21px; flex: none; }
         .badge {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             color: var(--text-secondary);
             font-weight: 500;
         }
         .grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 12px;
+            gap: 10px;
         }
         .control-group {
             display: flex;
@@ -123,7 +122,7 @@
         }
         .preview-container {
             width: 100%;
-            aspect-ratio: 16/9;
+            aspect-ratio: 2 / 1;
             background-color: #000;
             border-radius: 8px;
             overflow: hidden;
@@ -194,7 +193,11 @@
         input[type="text"] { width: 100%; padding: 12px; font-size: 16px; font-family: inherit; border-radius: 8px; border: 1px solid var(--border-color);
             background-color: var(--bg-color); color: var(--text-color); box-sizing: border-box; -webkit-appearance: none; appearance: none; }
         input[type="text"]:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+        .header-card { background: none; border: none; box-shadow: none; padding: 0 4px; }
+        .row2 { grid-template-columns: 3fr 2fr; margin-top: 10px; }
+        .row2 select { padding: 12px 28px 12px 10px; }
         select.need { border-color: #ef4444; }
+        .hint { font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4; }
         button.primary {
             background-color: var(--accent-color);
             color: #0f172a;
@@ -223,7 +226,7 @@
                     </svg>
                     Sync Checker
                 </h1>
-                <span class="badge">Ver0.12</span>
+                <span class="badge">Ver0.14</span>
             </div>
         </div>
 
@@ -242,28 +245,32 @@
                     <label for="deviceSelect">使用端末 (遅延補正)</label>
                     <select id="deviceSelect">
                         <option value="" selected disabled>機種を選んでください</option>
-                        <option value="-19.7" data-d0="2">iPhone 15 (実測: −19.7ms)</option>
-                        <option value="-47.3" data-d0="2">iPhone 17e (実測: −47.3ms)</option>
+                        <option value="-19.7" data-d0="2">iPhone 15</option>
+                        <option value="-47.3" data-d0="2">iPhone 17e</option>
                         <option value="0">補正なし (校正用)</option>
                     </select>
                 </div>
             </div>
-            <div class="control-group" style="margin-top: 12px;">
-                <label for="distSelect">スピーカーまでの距離（音の出どころ）</label>
-                <select id="distSelect">
-                    <option value="" selected disabled>選んでください</option>
-                    <option value="0">ヘッドホン・卓上スピーカー（0m）</option>
-                    <option value="4">部屋のスピーカー（約4m）</option>
-                </select>
+            <div class="grid-2 row2">
+                <div class="control-group">
+                    <label for="distSelect">音を聞く場所</label>
+                    <select id="distSelect">
+                        <option value="" selected disabled>選んでください</option>
+                        <option value="0">手元 0m</option>
+                        <option value="2">スタジオ 2m</option>
+                        <option value="4">クライアント室 4m</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="sensSelect">音の感度</label>
+                    <select id="sensSelect">
+                        <option value="std">標準</option>
+                        <option value="hi">高</option>
+                        <option value="max">最高</option>
+                    </select>
+                </div>
             </div>
-            <div class="control-group" style="margin-top: 12px;">
-                <label for="sensSelect">音の感度（反応が悪いときは「高」）</label>
-                <select id="sensSelect">
-                    <option value="std">標準</option>
-                    <option value="hi">高</option>
-                    <option value="max">最高</option>
-                </select>
-            </div>
+            <div class="hint" style="margin-top: 6px;">手元＝ヘッドホン・卓上スピーカー（約0m）／スタジオ＝スピーカーまで約2m／クライアント室＝約4m。音の反応が悪いときは、感度を「高」に。</div>
         </div>
 
 
@@ -284,8 +291,10 @@
 
         <!-- スタートボタン -->
         <button class="primary" id="startBtn" type="button">測定開始</button>
-        <button id="resetBtn" class="help-btn" type="button">数値をリセット</button>
-        <button id="helpBtn" class="help-btn" type="button">使い方・注意点</button>
+        <div class="grid-2">
+            <button id="resetBtn" class="help-btn" type="button">数値をリセット</button>
+            <button id="helpBtn" class="help-btn" type="button">使い方・注意点</button>
+        </div>
 
         <!-- 機材の元の設定（戻し忘れ防止） -->
         <details class="config-card pend-card">
@@ -312,7 +321,7 @@
 
             <h3>測り方</h3>
             <ol>
-                <li>「フレーム換算」「使用端末」「スピーカーまでの距離」を選びます。<b>使用端末と距離を選ばないと、測定を始められません。</b></li>
+                <li>「フレーム換算」「使用端末」「音を聞く場所」を選びます。<b>使用端末と音を聞く場所を選ばないと、測定を始められません。</b></li>
                 <li>「測定開始」を押します。</li>
                 <li>カメラを<b>画面全体</b>に向け、iPhoneを<b>毎回同じ位置・同じ向き</b>に置きます。指やケースでマイクの穴をふさがないでください。</li>
                 <li>測定ファイル（黒の画面に1フレームのフラッシュ＋1kHzのビープ）を再生します。</li>
@@ -335,7 +344,7 @@
                 <li>補正値は、基準の再生系で測った値です。<b>同じ条件</b>で使ってください。</li>
                 <li>ホーム画面アプリとSafariでは、戻し忘れの記録が別になります。</li>
                 <li>Bluetoothイヤホンは外してください。通話や他のカメラ・マイクアプリは閉じてください。</li>
-                <li>音は1mで約3ms遅れます。距離の分は自動で補正しています（ヘッドホン・卓上スピーカーは0m、部屋のスピーカーは約4m）。実際の距離が大きく違うと、1mにつき約3msずれます。ヘッドホンは、iPhoneの下端（マイク）をイヤーカップに当てて測ります。</li>
+                <li>音は1mで約3ms遅れます。距離の分は自動で補正しています（手元は0m、スタジオは約2m、クライアント室は約4m）。実際の距離が大きく違うと、1mにつき約3msずれます。ヘッドホンは、iPhoneの下端（マイク）をイヤーカップに当てて測ります。</li>
                 <li>音の反応が悪いときは、「音の感度」を「高」にします。補正値は感度「標準」で測った値なので、感度を変えたときは、基準の再生系で結果が0ms付近になるか確認してください。</li>
                 <li>測定中は画面をロックしないでください。周囲の雑音が大きいと音を拾えません。</li>
                 <li>映像が検出されないときは、カメラを画面全体に向け、距離を近づけてください。</li>
@@ -396,8 +405,8 @@ const aEst = ev => {
 };
 
 const aInfo = {}, vInfo = {};
-const distSel = $('distSelect'), SOUND = 2.915; // 音の速さ: 1mあたり約2.915ms
-const PROMPTS = ['使用端末を選んでください', '音の出どころを選んでください'];
+const distSel = $('distSelect'), SOUND = 2.915; // 音の速さ: 1mあたり約2.915ms（補正値は、スピーカーまで2mの距離で測った値）
+const PROMPTS = ['使用端末を選んでください', '音を聞く場所を選んでください'];
 const sens = $('sensSelect'), AUDIO_FLOOR = { std: 0.003, hi: 0.0015, max: 0.0008 };
 try { const v = localStorage.getItem('syncChecker.sens'); if (v && AUDIO_FLOOR[v]) sens.value = v; } catch (e) {}
 sens.addEventListener('change', () => { try { localStorage.setItem('syncChecker.sens', sens.value); } catch (e) {} });
@@ -443,7 +452,7 @@ async function start() {
     const noDev = sel.value === '';
     (noDev ? sel : distSel).classList.add('need');
     resVal.textContent = noDev ? PROMPTS[0] : PROMPTS[1];
-    resDesc.innerHTML = noDev ? '「使用端末」でお使いの機種を選んでから<br>「測定開始」を押してください' : '「スピーカーまでの距離」を選んでから<br>「測定開始」を押してください';
+    resDesc.innerHTML = noDev ? '「使用端末」でお使いの機種を選んでから<br>「測定開始」を押してください' : '「音を聞く場所」を選んでから<br>「測定開始」を押してください';
     return;
   }
   raw = []; vq = []; aq = []; nv = na = 0;
