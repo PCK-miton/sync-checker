@@ -223,7 +223,7 @@
                     </svg>
                     Sync Checker
                 </h1>
-                <span class="badge">Ver0.9</span>
+                <span class="badge">Ver0.10</span>
             </div>
         </div>
 
@@ -247,6 +247,14 @@
                         <option value="0">補正なし (校正用)</option>
                     </select>
                 </div>
+            </div>
+            <div class="control-group" style="margin-top: 12px;">
+                <label for="sensSelect">音の感度（反応が悪いときは「高」）</label>
+                <select id="sensSelect">
+                    <option value="std">標準</option>
+                    <option value="hi">高</option>
+                    <option value="max">最高</option>
+                </select>
             </div>
         </div>
 
@@ -319,6 +327,7 @@
                 <li>補正値は、基準の再生系で測った値です。<b>同じ条件</b>で使ってください。</li>
                 <li>ホーム画面アプリとSafariでは、戻し忘れの記録が別になります。</li>
                 <li>Bluetoothイヤホンは外してください。通話や他のカメラ・マイクアプリは閉じてください。</li>
+                <li>音の反応が悪いときは、「音の感度」を「高」にします。補正値は感度「標準」で測った値なので、感度を変えたときは、基準の再生系で結果が0ms付近になるか確認してください。</li>
                 <li>測定中は画面をロックしないでください。周囲の雑音が大きいと音を拾えません。</li>
                 <li>映像が検出されないときは、カメラを画面全体に向け、距離を近づけてください。</li>
             </ul>
@@ -344,37 +353,43 @@ const WORKLET = `class P extends AudioWorkletProcessor{
 try { localStorage.removeItem('syncChecker.cal'); } catch (e) {} // 旧バージョンの保存値を削除
 
 // 立ち上がり検出：ベースライン＋しきい値を超えたら記録開始、戻ったらイベント確定
-function detector(minThr, k, maxDur, onEvent, info) {
-  let base = null, sig = 0, ev = null, prev = null, lock = 0;
+function detector(minThr, k, maxDur, onEvent, info, pre = 1) {
+  // pre: 検出の直前の何サンプルを記録に含めるか（音は立ち上がりを正確に測るため多めにする）
+  let base = null, sig = 0, ev = null, lock = 0; const hist = [];
+  const keep = (t, v) => { hist.push({ t, v }); if (hist.length > pre) hist.shift(); };
   return (t, v) => {
-    if (base === null) { base = v; prev = { t, v }; return; }
-    if (t < lock) { prev = { t, v }; return; }
-    const thr = Math.max(minThr, k * sig); info.thr = thr;
+    if (base === null) { base = v; keep(t, v); return; }
+    if (t < lock) { keep(t, v); return; }
+    const thr = Math.max(typeof minThr === 'function' ? minThr() : minThr, k * sig); info.thr = thr;
     if (!ev) {
-      if (v > base + thr) ev = { pts: [prev, { t, v }], base, thr };
+      if (v > base + thr) ev = { pts: [...hist, { t, v }], base, thr, t0: t };
       else { base += (v - base) * 0.05; sig += (Math.abs(v - base) - sig) * 0.05; }
     } else {
       ev.pts.push({ t, v });
-      if (v < ev.base + ev.thr * 0.5 || t - ev.pts[0].t > maxDur) {
+      if (v < ev.base + ev.thr * 0.5 || t - ev.t0 > maxDur) {
         lock = t + 300; info.last = Math.max(...ev.pts.map(p => p.v)) - ev.base; onEvent(ev); ev = null;
       }
     }
-    prev = { t, v };
+    keep(t, v);
   };
 }
 // 映像：明るさの重心時刻（フレーム間隔より細かく推定）
 const vEst = ev => { let s = 0, st = 0; for (const p of ev.pts) { const w = Math.max(0, p.v - ev.base); s += w; st += w * p.t; } return st / s; };
 // 音：ピークの50%を横切る時刻（線形補間）
 const aEst = ev => {
-  const pk = Math.max(...ev.pts.map(p => p.v)), lv = ev.base + (pk - ev.base) / 2;
-  for (let i = 1; i < ev.pts.length; i++) {
-    const a = ev.pts[i - 1], b = ev.pts[i];
-    if (b.v >= lv && a.v < lv) return a.t + (lv - a.v) / (b.v - a.v) * (b.t - a.t);
+  const pts = ev.pts; let ip = 0;
+  pts.forEach((p, i) => { if (p.v > pts[ip].v) ip = i; });
+  const lv = ev.base + (pts[ip].v - ev.base) / 2;
+  for (let i = ip; i > 0; i--) {
+    if (pts[i - 1].v < lv) { const a = pts[i - 1], b = pts[i]; return a.t + (lv - a.v) / (b.v - a.v) * (b.t - a.t); }
   }
-  return ev.pts[0].t;
+  return pts[0].t;
 };
 
 const aInfo = {}, vInfo = {};
+const sens = $('sensSelect'), AUDIO_FLOOR = { std: 0.003, hi: 0.0015, max: 0.0008 };
+try { const v = localStorage.getItem('syncChecker.sens'); if (v && AUDIO_FLOOR[v]) sens.value = v; } catch (e) {}
+sens.addEventListener('change', () => { try { localStorage.setItem('syncChecker.sens', sens.value); } catch (e) {} });
 let running = false, stream, ctx, wake, raw = [], vq = [], aq = [], nv = 0, na = 0, src = '-';
 const med = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 
@@ -426,7 +441,7 @@ async function start() {
 
     // 音：ctx時間→performance時間は「最小遅延」追従で変換（ジッタとドリフトを抑える）
     let off = Infinity, last = 0;
-    const aDet = detector(0.003, 8, 300, ev => push('a', aEst(ev)), aInfo);
+    const aDet = detector(() => AUDIO_FLOOR[sens.value], 8, 300, ev => push('a', aEst(ev)), aInfo, 12);
     node.port.onmessage = e => {
       const [ct, mag, pk] = e.data, now = performance.now(), d = now - ct * 1000;
       aInfo.inPeak = Math.max(pk, (aInfo.inPeak || 0) * 0.999);
@@ -454,7 +469,7 @@ async function start() {
       if (!running) return clearInterval(tick);
       const st = stream.getVideoTracks()[0].getSettings();
       statusEl.innerHTML = `映像${nv} 音${na} 組${raw.length} ｜ ${Math.round(st.frameRate || 0)}fps ${src}`
-        + (vInfo.thr && aInfo.thr ? `<br><small>閾値 映像${vInfo.thr.toFixed(1)} 音${aInfo.thr.toFixed(4)} ／ 強さ ${(vInfo.last || 0).toFixed(1)} ${(aInfo.last || 0).toFixed(4)}<br>入力ピーク ${(aInfo.inPeak || 0).toFixed(3)}</small>` : '');
+        + (vInfo.thr && aInfo.thr ? `<br><small>閾値 映像${vInfo.thr.toFixed(1)} 音${aInfo.thr.toFixed(4)} ／ 強さ ${(vInfo.last || 0).toFixed(1)} ${(aInfo.last || 0).toFixed(4)}<br>入力ピーク ${(aInfo.inPeak || 0).toFixed(3)} ／ 感度 ${sens.selectedOptions[0].textContent}</small>` : '');
     }, 500);
   } catch (e) {
     stop(); resVal.textContent = '開始できません';
